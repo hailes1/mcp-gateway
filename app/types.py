@@ -5,6 +5,14 @@ from typing import Any, Protocol
 
 
 @dataclass(slots=True)
+class ToolDefinition:
+    name: str
+    description: str
+    source: str
+    input_schema: dict[str, Any]
+
+
+@dataclass(slots=True)
 class GatewayResult:
     tool: str
     ok: bool
@@ -13,6 +21,6 @@ class GatewayResult:
 
 
 class ToolAdapter(Protocol):
-    name: str
+    definition: ToolDefinition
 
     async def execute(self, input_data: Any) -> Any: ...
