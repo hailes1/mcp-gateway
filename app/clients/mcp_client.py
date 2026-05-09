@@ -49,54 +49,50 @@ class McpHttpClient:
 
     async def _request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         self._request_id += 1
-        http_response = await self._client.post(
-            self._server.url,
-            headers={
-                "content-type": "application/json",
-                "accept": "application/json, text/event-stream",
-            },
-            json={
-                "jsonrpc": "2.0",
-                "id": self._request_id,
-                "method": method,
-                "params": params,
-            },
-        )
-        http_response.raise_for_status()
+        http_response = await self._post(method, params)
 
         payload = _parse(http_response)
-        if payload.get("id") != self._request_id:
-            raise McpHttpError(f"Unexpected response id from {self._server.name}")
-
-        error = payload.get("error")
-        if error is not None:
-            message = error.get("message", "Unknown upstream error") if isinstance(error, dict) else str(error)
-            raise McpHttpError(message)
-
         result = payload.get("result")
-        if not isinstance(result, dict):
-            raise McpHttpError(f"Invalid {method} result from {self._server.name}")
         return result
+
+    async def _post(self, method: str, params: dict[str, Any]) -> httpx.Response:
+        try:
+            http_response = await self._client.post(
+                self._server.url,
+                headers={
+                    "content-type": "application/json",
+                },
+                json={
+                    "jsonrpc": "2.0",
+                    "id": self._request_id,
+                    "method": method,
+                    "params": params,
+                },
+            )
+            http_response.raise_for_status()
+            return http_response
+        except httpx.HTTPStatusError as exc:
+            raise McpHttpError(
+                f"Upstream MCP server '{self._server.name}' returned HTTP {exc.response.status_code}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise McpHttpError(f"Request to upstream MCP server '{self._server.name}' failed: {exc}") from exc
 
 
 def _parse(response: httpx.Response) -> dict[str, Any]:
-    content_type = response.headers.get("content-type", "")
-    body = response.text.strip()
+    payload: Any | None = None
 
-    if "text/event-stream" not in content_type:
+    for chunk in response.text.strip().split("\n\n"):
+        data = "\n".join(line[5:].strip() for line in chunk.splitlines() if line.startswith("data:"))
+        if data:
+            payload = json.loads(data)
+            if not isinstance(payload, dict):
+                raise McpHttpError("Invalid SSE payload from upstream MCP server")
+            break
+
+    if payload is None:
         payload = response.json()
         if not isinstance(payload, dict):
             raise McpHttpError("Invalid non-object JSON response from upstream MCP server")
-        return payload
 
-    for chunk in body.split("\n\n"):
-        data_lines = [line[5:].strip() for line in chunk.splitlines() if line.startswith("data:")]
-        if not data_lines:
-            continue
-
-        payload = json.loads("\n".join(data_lines))
-        if not isinstance(payload, dict):
-            raise McpHttpError("Invalid SSE payload from upstream MCP server")
-        return payload
-
-    raise McpHttpError("Upstream MCP server returned no event payload")
+    return payload
