@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from contextlib import asynccontextmanager
 import logging
 from typing import Any
 
@@ -8,8 +9,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.adapters.addition import AdditionToolAdapter
+from app.adapters.tools.addition import AdditionToolAdapter
+from app.adapters.mcp.mcp import register
 from app.config import GatewaySettings, load_settings
+from app.exceptions import ToolNotRegisteredError
 from app.registry import ToolRegistry
 from app.types import GatewayResult
 
@@ -78,7 +81,7 @@ def build_registry(settings: GatewaySettings) -> ToolRegistry:
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     resolved_settings = settings or load_settings()
-    app = FastAPI(title="mcp-gateway", version="0.1.0")
+    app = FastAPI(title="MCP Gateway", version="0.1.0", lifespan=create_lifespan(resolved_settings))
     app.state.gateway_settings = resolved_settings
     app.state.registry = build_registry(resolved_settings)
 
@@ -107,7 +110,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         if tool is None:
             logger.warning("Unknown tool requested", extra={"tool": call.tool})
             return gateway_response(
-                GatewayResult(tool=call.tool, ok=False, error=f"Tool '{call.tool}' is not registered."),
+                GatewayResult(tool=call.tool, ok=False, error=str(ToolNotRegisteredError(call.tool))),
                 status_code=404,
             )
 
@@ -125,8 +128,17 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
-
-
 def gateway_response(result: GatewayResult, status_code: int = 200) -> JSONResponse:
     return JSONResponse(status_code=status_code, content=asdict(result))
+
+
+def create_lifespan(settings: GatewaySettings):
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await register(app.state.registry, settings)
+        yield
+
+    return lifespan
+
+
+app = create_app()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.exceptions import invalid_addition_number_error, invalid_addition_payload_error
 from app.types import ToolAdapter, ToolDefinition
 
 
@@ -23,11 +24,12 @@ class AdditionToolAdapter(ToolAdapter):
 
     async def execute(self, input_data: Any) -> dict[str, int | float]:
         if not isinstance(input_data, dict):
-            raise ValueError("Invalid input for math.add: expected an object with numeric 'a' and 'b' fields")
+            raise invalid_addition_payload_error()
 
         a = input_data.get("a")
         b = input_data.get("b")
+
         if not isinstance(a, int | float) or not isinstance(b, int | float):
-            raise ValueError("Invalid input for math.add: 'a' and 'b' must both be numbers")
+            raise invalid_addition_number_error()
 
         return {"a": a, "b": b, "sum": a + b}
