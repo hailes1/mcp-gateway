@@ -52,7 +52,17 @@ class McpHttpClient:
         http_response = await self._post(method, params)
 
         payload = _parse(http_response)
+        if payload.get("id") != self._request_id:
+            raise McpHttpError(f"Unexpected response id from {self._server.name}")
+
+        error = payload.get("error")
+        if error is not None:
+            message = error.get("message", "Unknown upstream error") if isinstance(error, dict) else str(error)
+            raise McpHttpError(message)
+
         result = payload.get("result")
+        if not isinstance(result, dict):
+            raise McpHttpError(f"Invalid {method} result from {self._server.name}")
         return result
 
     async def _post(self, method: str, params: dict[str, Any]) -> httpx.Response:
@@ -61,6 +71,7 @@ class McpHttpClient:
                 self._server.url,
                 headers={
                     "content-type": "application/json",
+                    "accept": "application/json, text/event-stream",
                 },
                 json={
                     "jsonrpc": "2.0",
