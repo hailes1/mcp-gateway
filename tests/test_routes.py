@@ -47,18 +47,6 @@ def test_adapter_route_rejects_mismatched_tool() -> None:
     assert "does not belong to adapter" in body["error"]
 
 
-def test_gateway_call_alias_still_works() -> None:
-    with _client() as client:
-        response = client.post(
-            "/gateway/call", json={"tool": "math.add", "input": {"a": 6, "b": 1}}
-        )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["ok"] is True
-    assert body["data"]["sum"] == 7
-
-
 def test_health_includes_upstream_status() -> None:
     with _client() as client:
         response = client.get("/health")

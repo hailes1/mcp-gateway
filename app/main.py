@@ -27,7 +27,7 @@ class GatewayCall(BaseModel):
 
 class ToolDefinitionResponse(BaseModel):
     name: str = Field(
-        description="Stable tool identifier used in /mcp or /gateway/call.", examples=["math.add"]
+        description="Stable tool identifier used in /mcp.", examples=["math.add"]
     )
     description: str = Field(
         description="Human-readable summary of what the tool does.",
@@ -255,11 +255,6 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
                 status_code=400,
             )
         return await execute_tool(qualified_tool, call.input)
-
-    # Backward-compatible alias while callers migrate to /mcp.
-    @data_router.post("/gateway/call")
-    async def gateway_call_legacy(call: GatewayCall) -> JSONResponse:
-        return await execute_tool(call.tool, call.input)
 
     app.include_router(control_router)
     app.include_router(data_router)
