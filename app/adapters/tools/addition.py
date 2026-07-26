@@ -29,7 +29,12 @@ class AdditionToolAdapter(ToolAdapter):
         a = input_data.get("a")
         b = input_data.get("b")
 
-        if not isinstance(a, int | float) or not isinstance(b, int | float):
+        if (
+            not isinstance(a, int | float)
+            or not isinstance(b, int | float)
+            or isinstance(a, bool)
+            or isinstance(b, bool)
+        ):
             raise invalid_addition_number_error()
 
         return {"a": a, "b": b, "sum": a + b}

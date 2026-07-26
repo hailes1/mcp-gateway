@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -15,6 +16,7 @@ class McpHttpClient:
         self._client = client or httpx.AsyncClient(timeout=15.0)
         self._owns_client = client is None
         self._request_id = 0
+        self._request_lock = asyncio.Lock()
         self._initialized = False
 
     async def aclose(self) -> None:
@@ -48,11 +50,11 @@ class McpHttpClient:
         return response
 
     async def _request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        self._request_id += 1
-        http_response = await self._post(method, params)
+        request_id = await self._next_request_id()
+        http_response = await self._post(method, params, request_id)
 
         payload = _parse(http_response)
-        if payload.get("id") != self._request_id:
+        if payload.get("id") != request_id:
             raise McpHttpError(f"Unexpected response id from {self._server.name}")
 
         error = payload.get("error")
@@ -65,7 +67,12 @@ class McpHttpClient:
             raise McpHttpError(f"Invalid {method} result from {self._server.name}")
         return result
 
-    async def _post(self, method: str, params: dict[str, Any]) -> httpx.Response:
+    async def _next_request_id(self) -> int:
+        async with self._request_lock:
+            self._request_id += 1
+            return self._request_id
+
+    async def _post(self, method: str, params: dict[str, Any], request_id: int) -> httpx.Response:
         try:
             http_response = await self._client.post(
                 self._server.url,
@@ -75,7 +82,7 @@ class McpHttpClient:
                 },
                 json={
                     "jsonrpc": "2.0",
-                    "id": self._request_id,
+                    "id": request_id,
                     "method": method,
                     "params": params,
                 },

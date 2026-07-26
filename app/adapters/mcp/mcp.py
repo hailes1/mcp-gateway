@@ -30,7 +30,8 @@ class RemoteMcpToolAdapter(ToolAdapter):
             raise UpstreamToolError(self._server.name, self.definition.name, str(exc)) from exc
 
 
-async def register(registry: ToolRegistry, settings: GatewaySettings) -> None:
+async def register(registry: ToolRegistry, settings: GatewaySettings) -> list[McpHttpClient]:
+    clients: list[McpHttpClient] = []
     for server in settings.upstream_servers:
         if server.type != "http":
             logger.warning("Skipping unsupported upstream server type", extra={"server": server.name, "type": server.type})
@@ -41,9 +42,12 @@ async def register(registry: ToolRegistry, settings: GatewaySettings) -> None:
             await client.initialize()
             for tool in await client.list_tools():
                 registry.register(_build_adapter(server, tool, client))
+            clients.append(client)
         except Exception:
             logger.exception("Failed to register upstream MCP server", extra={"server": server.name, "url": server.url})
             await client.aclose()
+
+    return clients
 
 
 def _build_adapter(
