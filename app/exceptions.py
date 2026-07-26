@@ -29,7 +29,9 @@ class UpstreamToolDefinitionError(McpHttpError):
 
 
 def invalid_addition_payload_error() -> ToolInputError:
-    return ToolInputError("Invalid input for math.add: expected an object with numeric 'a' and 'b' fields")
+    return ToolInputError(
+        "Invalid input for math.add: expected an object with numeric 'a' and 'b' fields"
+    )
 
 
 def invalid_addition_number_error() -> ToolInputError:

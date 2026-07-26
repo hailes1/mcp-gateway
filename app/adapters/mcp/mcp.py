@@ -5,7 +5,12 @@ from typing import Any
 
 from app.clients.mcp_client import McpHttpClient
 from app.config import GatewaySettings, UpstreamServerSettings
-from app.exceptions import McpHttpError, ToolInputError, UpstreamToolDefinitionError, UpstreamToolError
+from app.exceptions import (
+    McpHttpError,
+    ToolInputError,
+    UpstreamToolDefinitionError,
+    UpstreamToolError,
+)
 from app.registry import ToolRegistry
 from app.types import ToolAdapter, ToolDefinition
 
@@ -14,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class RemoteMcpToolAdapter(ToolAdapter):
-    def __init__(self, server: UpstreamServerSettings, definition: ToolDefinition, client: McpHttpClient) -> None:
+    def __init__(
+        self, server: UpstreamServerSettings, definition: ToolDefinition, client: McpHttpClient
+    ) -> None:
         self.definition = definition
         self._server = server
         self._client = client
@@ -30,24 +37,51 @@ class RemoteMcpToolAdapter(ToolAdapter):
             raise UpstreamToolError(self._server.name, self.definition.name, str(exc)) from exc
 
 
-async def register(registry: ToolRegistry, settings: GatewaySettings) -> list[McpHttpClient]:
-    clients: list[McpHttpClient] = []
+async def connect_adapter(
+    registry: ToolRegistry,
+    server: UpstreamServerSettings,
+) -> McpHttpClient | None:
+    """Connect to a single upstream MCP server and register its tools.
+
+    Returns the live client on success, or None if the connection failed.
+    """
+    if server.type != "http":
+        logger.warning(
+            "Skipping unsupported upstream server type",
+            extra={"server": server.name, "type": server.type},
+        )
+        return None
+    client = McpHttpClient(server)
+    try:
+        await client.initialize()
+        for tool in await client.list_tools():
+            registry.register(_build_adapter(server, tool, client))
+        return client
+    except Exception:
+        logger.exception(
+            "Failed to register upstream MCP server",
+            extra={"server": server.name, "url": server.url},
+        )
+        await client.aclose()
+        return None
+
+
+async def register(
+    registry: ToolRegistry, settings: GatewaySettings
+) -> tuple[dict[str, McpHttpClient], list[str]]:
+    """Connect to all configured upstream servers.
+
+    Returns (clients_by_name, failed_server_names).
+    """
+    clients: dict[str, McpHttpClient] = {}
+    failed: list[str] = []
     for server in settings.upstream_servers:
-        if server.type != "http":
-            logger.warning("Skipping unsupported upstream server type", extra={"server": server.name, "type": server.type})
-            continue
-
-        client = McpHttpClient(server)
-        try:
-            await client.initialize()
-            for tool in await client.list_tools():
-                registry.register(_build_adapter(server, tool, client))
-            clients.append(client)
-        except Exception:
-            logger.exception("Failed to register upstream MCP server", extra={"server": server.name, "url": server.url})
-            await client.aclose()
-
-    return clients
+        client = await connect_adapter(registry, server)
+        if client is not None:
+            clients[server.name] = client
+        else:
+            failed.append(server.name)
+    return clients, failed
 
 
 def _build_adapter(

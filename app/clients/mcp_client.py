@@ -11,7 +11,9 @@ from app.exceptions import McpHttpError
 
 
 class McpHttpClient:
-    def __init__(self, server: UpstreamServerSettings, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self, server: UpstreamServerSettings, client: httpx.AsyncClient | None = None
+    ) -> None:
         self._server = server
         self._client = client or httpx.AsyncClient(timeout=15.0)
         self._owns_client = client is None
@@ -59,7 +61,11 @@ class McpHttpClient:
 
         error = payload.get("error")
         if error is not None:
-            message = error.get("message", "Unknown upstream error") if isinstance(error, dict) else str(error)
+            message = (
+                error.get("message", "Unknown upstream error")
+                if isinstance(error, dict)
+                else str(error)
+            )
             raise McpHttpError(message)
 
         result = payload.get("result")
@@ -94,14 +100,18 @@ class McpHttpClient:
                 f"Upstream MCP server '{self._server.name}' returned HTTP {exc.response.status_code}"
             ) from exc
         except httpx.RequestError as exc:
-            raise McpHttpError(f"Request to upstream MCP server '{self._server.name}' failed: {exc}") from exc
+            raise McpHttpError(
+                f"Request to upstream MCP server '{self._server.name}' failed: {exc}"
+            ) from exc
 
 
 def _parse(response: httpx.Response) -> dict[str, Any]:
     payload: Any | None = None
 
     for chunk in response.text.strip().split("\n\n"):
-        data = "\n".join(line[5:].strip() for line in chunk.splitlines() if line.startswith("data:"))
+        data = "\n".join(
+            line[5:].strip() for line in chunk.splitlines() if line.startswith("data:")
+        )
         if data:
             payload = json.loads(data)
             if not isinstance(payload, dict):
